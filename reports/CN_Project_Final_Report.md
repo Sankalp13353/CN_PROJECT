@@ -19,7 +19,7 @@ PROJECT TEAM:
 ## Front Matter
 
 ### Abstract
-Modern distributed enterprise systems require fault-tolerant service discovery, encrypted ingress routing, and reliable horizontal scaling across physical workstations. This project presents the design, multi-phase deployment, and empirical verification of the **Multi-Tier Private Network Service Platform**, constructed across two physical macOS workstations operating over an IEEE 802.11 Wi-Fi local area network (`10.7.0.0/20`). 
+Modern distributed enterprise systems require fault-tolerant service discovery, encrypted ingress routing, and reliable horizontal scaling across physical workstations. This project presents the design, multi-phase deployment, and empirical verification of the **Multi-Tier Private Network Service Platform**, constructed across two physical macOS workstations operating over an IEEE 802.11 Wi-Fi LAN (`10.7.0.0/20`). 
 
 In **Phase 1**, a baseline platform was established comprising:
 1. An authoritative private DNS server (`dnsmasq`) resolving custom top-level domain hostnames (`app.team1.test` and `api.team1.test`).
@@ -74,13 +74,14 @@ We express our sincere gratitude to our Computer Networks course instructors, la
 - **Figure 7:** HTTP Cache-Control and ETag Header Verification
 - **Figure 8:** Phase 2 Dual-Host Resilient Architecture
 - **Figure 9:** DNS Redundancy & Automated Failover Sequence (Extension A)
-- **Figure 10:** Primary DNS Outage and Backup DNS Resolution Proof
-- **Figure 11:** Authoritative DNS 30-Second TTL Verification (Extension B)
-- **Figure 12:** Active macOS Packet Filter (PF) Anchor Rules on Mac 2 (Extension C)
-- **Figure 13:** Service Isolation and Permitted Ingress Probe Verification
-- **Figure 14:** Backend High Availability Sequential 10-Request Loop (Extension D)
-- **Figure 15:** Standby Edge Migration HTTPS Response Verification (Extension E)
-- **Figure 16:** Disaster Recovery Configuration Syntax Validation (Extension F)
+- **Figure 10:** Multi-Resolver Configuration and Concurrent Resolution Proof (Extension A)
+- **Figure 11:** Primary DNS Outage and Automated Backup DNS Fallback Resolution (Extension A)
+- **Figure 12:** Authoritative DNS 30-Second TTL Verification (Extension B)
+- **Figure 13:** Active macOS Packet Filter (PF) Anchor Rules on Mac 2 (Extension C)
+- **Figure 14:** Service Isolation and Permitted Ingress Probe Verification (Extension C)
+- **Figure 15:** Backend High Availability Sequential 10-Request Loop (Extension D)
+- **Figure 16:** Standby Edge Migration HTTPS Response Verification (Extension E)
+- **Figure 17:** Disaster Recovery Configuration Syntax Validation & Application Recovery (Extension F)
 
 ---
 
@@ -295,12 +296,16 @@ sequenceDiagram
 
 #### Testing Methodology & Observed Results
 1. Both resolvers were verified responding independently to `dig @10.7.1.19 app.team1.test` and `dig @10.7.11.60 app.team1.test`.
+
+![Multi-Resolver Configuration](../evidence_phase2/A_Backup_DNS/Screenshot%202026-11-23%20at%206.17.51%E2%80%AFPM.png)
+*Figure 10: Multi-Resolver Configuration and Concurrent Resolution Proof (Extension A). Terminal output of `scutil --dns` verifies dual nameservers (`10.7.1.19` and `10.7.11.60`), and independent dig lookups verify authoritative responses with 30-second TTL.*
+
 2. Primary DNS was abruptly terminated using `sudo brew services stop dnsmasq`.
 3. Client lookups immediately failed over to the backup resolver (`10.7.11.60`), returning authoritative records without disruption.
 4. Primary DNS was restarted using `sudo brew services start dnsmasq`, restoring primary authority.
 
-![Backup DNS Evidence](../evidence_phase2/A_Backup_DNS/Screenshot%202026-11-23%20at%206.18.33%20PM.png)
-*Figure 10: Primary DNS Outage and Backup DNS Resolution Proof. Mac 1 primary dnsmasq is stopped via Homebrew services; query to backup resolver `10.7.11.60` succeeds authoritatively with TTL 30 seconds; primary service is then cleanly restored.*
+![Backup DNS Failover Evidence](../evidence_phase2/A_Backup_DNS/Screenshot%202026-11-23%20at%206.18.33%E2%80%AFPM.png)
+*Figure 11: Primary DNS Outage and Automated Backup DNS Fallback Resolution (Extension A). Mac 1 primary dnsmasq is stopped via Homebrew services; query to backup resolver `10.7.11.60` succeeds authoritatively with TTL 30 seconds; primary service is then cleanly restored.*
 
 ---
 
@@ -324,8 +329,8 @@ This forces all DNS response packets to carry a 30-second TTL in their answer he
 - Local resolver caching was audited. Subsequent lookups through macOS caching demons demonstrated expected second-by-second countdowns.
 - Executing `sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder` successfully invalidated cached records on demand.
 
-![DNS TTL Evidence](../evidence_phase2/B_DNS_TTL_Caching/Screenshot%202026-11-23%20at%206.21.18%20PM.png)
-*Figure 11: Authoritative DNS 30-Second TTL Verification (Extension B). Terminal query confirms `app.team1.test` carries an exact 30-second TTL.*
+![DNS TTL Evidence](../evidence_phase2/B_DNS_TTL_Caching/Screenshot%202026-11-23%20at%206.21.18%E2%80%AFPM.png)
+*Figure 12: Authoritative DNS 30-Second TTL Verification (Extension B). Terminal query confirms `app.team1.test` carries an exact 30-second TTL.*
 
 ---
 
@@ -347,15 +352,15 @@ block drop in quick on en0 proto tcp from any to any port = 3002
 ```
 
 ![PF Rules Evidence](../evidence_phase2/C_Service_Isolation/WhatsApp%20Image%202026-11-23%20at%2018.22.33.jpeg)
-*Figure 12: Active macOS Packet Filter (PF) Anchor Rules on Mac 2 (Extension C). Output of `sudo pfctl -a team1 -sr` confirming passing rules for `10.7.1.19` and block drop rules for general LAN traffic.*
+*Figure 13: Active macOS Packet Filter (PF) Anchor Rules on Mac 2 (Extension C). Output of `sudo pfctl -a team1 -sr` confirming passing rules for `10.7.1.19` and block drop rules for general LAN traffic.*
 
 #### Testing Methodology & Observed Results
 1. Direct connection attempts from unauthorized LAN nodes to `http://10.7.11.60:3001/` were dropped immediately, confirming socket shielding.
 2. Connection attempts from Mac 1 (`10.7.1.19`) succeeded cleanly with `HTTP 200 OK`.
 3. Ingress requests to `https://app.team1.test/` via Nginx executed properly with full TLS termination.
 
-![Service Isolation Verification](../evidence_phase2/C_Service_Isolation/Screenshot%202026-11-23%20at%206.23.56%20PM.png)
-*Figure 13: Service Isolation and Permitted Ingress Probe Verification. Direct authorized probes from Mac 1 to ports 3001 and 3002 return HTTP 200, followed by verified edge reverse proxy delivery.*
+![Service Isolation Verification](../evidence_phase2/C_Service_Isolation/Screenshot%202026-11-23%20at%206.23.56%E2%80%AFPM.png)
+*Figure 14: Service Isolation and Permitted Ingress Probe Verification (Extension C). Direct authorized probes from Mac 1 to ports 3001 and 3002 return HTTP 200, followed by verified edge reverse proxy delivery.*
 
 ---
 
@@ -387,8 +392,8 @@ for i in {1..10}; do curl -sk -o /dev/null -w "Request $i: HTTP %{http_code}\n" 
 ```
 The test confirmed strict alternating distribution (`A`, `B`, `A`, `B`...) with zero failed requests.
 
-![Backend HA Evidence](../evidence_phase2/D_Backend_High_Availability/Screenshot%202026-11-23%20at%206.24.28%20PM.png)
-*Figure 14: Backend High Availability Sequential 10-Request Loop (Extension D). Terminal output confirms perfect alternating round-robin distribution across 10 requests.*
+![Backend HA Evidence](../evidence_phase2/D_Backend_High_Availability/Screenshot%202026-11-23%20at%206.24.28%E2%80%AFPM.png)
+*Figure 15: Backend High Availability Sequential 10-Request Loop (Extension D). Terminal output confirms perfect alternating round-robin distribution across 10 requests.*
 
 ---
 
@@ -412,8 +417,8 @@ Mac 1 was provisioned with `nginx 1.31.9` configured as a standby edge:
 3. During the 30-second TTL drain window, clients with cached records continued accessing Mac 2 without interruption.
 4. Fresh lookups resolved directly to Mac 1 (`10.7.1.19`), which successfully terminated TLS and proxied requests to the backends.
 
-![Edge Migration Evidence](../evidence_phase2/E_Edge_Migration/Screenshot%202026-11-23%20at%206.24.59%20PM.png)
-*Figure 15: Standby Edge Migration HTTPS Response Verification (Extension E). DNS query confirms `app.team1.test` resolves to `10.7.1.19`; subsequent curl commands verify HTTPS responses served by `nginx/1.31.9` with alternating backends.*
+![Edge Migration Evidence](../evidence_phase2/E_Edge_Migration/Screenshot%202026-11-23%20at%206.24.59%E2%80%AFPM.png)
+*Figure 16: Standby Edge Migration HTTPS Response Verification (Extension E). DNS query confirms `app.team1.test` resolves to `10.7.1.19`; subsequent curl commands verify HTTPS responses served by `nginx/1.31.9` on Mac 1 with alternating backends.*
 
 ---
 
@@ -427,8 +432,8 @@ Establish verified operational procedures to audit daemon configurations non-dis
 - **Port Conflict Auditing:** Verified via `netstat -an -f inet | grep LISTEN` and `lsof -i :53 -i :80 -i :443`.
 - **Application Recovery Verification:** Demonstrated stopping, auditing, and successfully recovering the full edge application stack.
 
-![Troubleshooting Evidence](../evidence_phase2/F_Troubleshooting/Screenshot%202026-11-23%20at%206.25.28%20PM.png)
-*Figure 16: Disaster Recovery Configuration Syntax Validation (Extension F). Output of `sudo nginx -t` confirms syntax is OK and test is successful, followed by verified HTTP 200 OK application recovery.*
+![Troubleshooting Evidence](../evidence_phase2/F_Troubleshooting/Screenshot%202026-11-23%20at%206.25.28%E2%80%AFPM.png)
+*Figure 17: Disaster Recovery Configuration Syntax Validation & Application Recovery (Extension F). Output of `sudo nginx -t` confirms syntax is OK and test is successful, followed by verified HTTP 200 OK application recovery.*
 
 ---
 
