@@ -1,0 +1,41 @@
+sequenceDiagram
+    autonumber
+    actor Client as LAN Client
+    participant DNS as Private DNS Resolver (Mac 1 / Mac 2)
+    participant Edge1 as Primary Edge (Mac 2: 10.7.11.60)
+    participant Edge2 as Standby Edge (Mac 1: 10.7.1.19)
+    participant PF as Mac 2 PF Firewall (Anchor: team1)
+    participant Backends as Backends A & B (Ports 3001/3002)
+
+    Note over DNS,Backends: Initial State: DNS points to Mac 2 (10.7.11.60). PF blocks external LAN.
+    Client->>DNS: Resolve app.team1.test
+    DNS-->>Client: A Record: 10.7.11.60 (TTL=30s)
+    Client->>Edge1: HTTPS Ingress (10.7.11.60:443)
+    Edge1->>Backends: Localhost IPC (3001/3002)
+    Backends-->>Edge1: Response Data
+    Edge1-->>Client: HTTP 200 OK (Served by Tejas)
+
+    rect rgb(245, 245, 255)
+        Note over Edge2,PF: Step 1: Pre-Migration Authorization on Mac 2
+        Note over PF: sudo pfctl -a team1 -f rules<br/>pass in quick on en0 from 10.7.1.19 to {3001, 3002}
+        Note over Edge2: Start Standby Nginx (10.7.1.19:443)
+        Edge2->>Backends: Verify LAN probe to 10.7.11.60:3001 (Permitted by PF)
+        Backends-->>Edge2: 200 OK
+    end
+
+    rect rgb(255, 250, 240)
+        Note over DNS: Step 2: Coordinated DNS Update (Cutover)
+        Note over DNS: Update records to 10.7.1.19 & reload dnsmasq
+        Note over Client: TTL Drain Window (0-30 seconds):<br/>Cached clients hit Edge 1 without dropped packets.<br/>Fresh lookups resolve to Edge 2 (10.7.1.19).
+    end
+
+    rect rgb(240, 255, 240)
+        Note over Client,Edge2: Step 3: Active Migration Established
+        Client->>DNS: Fresh Query for app.team1.test
+        DNS-->>Client: A Record: 10.7.1.19 (TTL=30s)
+        Client->>Edge2: HTTPS Ingress (10.7.1.19:443)
+        Edge2->>PF: Forward to 10.7.11.60:3001/3002 (Permitted by PF allowlist)
+        PF->>Backends: Deliver to backend
+        Backends-->>Edge2: Return data
+        Edge2-->>Client: HTTP 200 OK (Served by Sankalp Edge)
+    end

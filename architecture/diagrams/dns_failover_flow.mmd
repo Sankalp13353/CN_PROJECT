@@ -1,0 +1,24 @@
+sequenceDiagram
+    autonumber
+    actor Client as LAN Client Resolver
+    participant Mac1DNS as Mac 1 Primary DNS (10.7.1.19)
+    participant Mac2DNS as Mac 2 Backup DNS (10.7.11.60)
+    participant Edge as Edge Gateway (Nginx)
+
+    Note over Client: Configured via scutil --dns with Primary & Secondary Resolvers
+    Client->>Mac1DNS: DNS Query A app.team1.test
+    Mac1DNS-->>Client: Response: 10.7.11.60 (TTL=30s)
+    Client->>Edge: HTTPS Traffic to 10.7.11.60:443
+    Edge-->>Client: HTTP 200 OK Response
+
+    Note over Mac1DNS: Outage Event: Primary DNS Stopped (sudo brew services stop dnsmasq)
+    Client->>Mac1DNS: DNS Query A app.team1.test (Primary unreachable)
+    Note over Client: macOS Resolver triggers failover to secondary nameserver
+    Client->>Mac2DNS: DNS Query A app.team1.test (Failover to Backup)
+    Mac2DNS-->>Client: Response: 10.7.11.60 (TTL=30s)
+    Client->>Edge: Continued HTTPS Traffic to 10.7.11.60:443 (Zero Interruption)
+    Edge-->>Client: HTTP 200 OK Response
+
+    Note over Mac1DNS: Recovery Event: Primary DNS Restarted (sudo brew services start dnsmasq)
+    Client->>Mac1DNS: DNS Query A app.team1.test (Primary active again)
+    Mac1DNS-->>Client: Response: 10.7.11.60 (TTL=30s)

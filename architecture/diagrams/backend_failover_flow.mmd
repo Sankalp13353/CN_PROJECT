@@ -1,0 +1,46 @@
+sequenceDiagram
+    autonumber
+    actor Client as Ingress Client
+    participant Nginx as Nginx Reverse Proxy / Load Balancer
+    participant BackendA as Backend A (Port 3001)
+    participant BackendB as Backend B (Port 3002)
+
+    Note over Nginx: Upstream Pool: round-robin (max_fails=3, fail_timeout=10s)
+
+    rect rgb(240, 248, 255)
+        Note over Nginx,BackendB: Phase 1: Healthy Alternating Round-Robin
+        Client->>Nginx: Request 1 (GET /)
+        Nginx->>BackendA: Forward to 3001
+        BackendA-->>Nginx: 200 OK (X-Backend: A)
+        Nginx-->>Client: 200 OK (X-Backend: A)
+
+        Client->>Nginx: Request 2 (GET /)
+        Nginx->>BackendB: Forward to 3002
+        BackendB-->>Nginx: 200 OK (X-Backend: B)
+        Nginx-->>Client: 200 OK (X-Backend: B)
+    end
+
+    rect rgb(255, 240, 240)
+        Note over BackendA: Failure Event: Backend A Terminated (SIGTERM / Port Crash)
+        Client->>Nginx: Request 3 (GET /)
+        Nginx->>BackendA: Forward to 3001 (Connection Refused / Timeout)
+        Note over Nginx: proxy_next_upstream catches error / timeout
+        Nginx->>BackendB: Transparent Immediate Retry to 3002
+        BackendB-->>Nginx: 200 OK (X-Backend: B)
+        Nginx-->>Client: 200 OK (X-Backend: B) (Client experiences zero 502 errors)
+
+        Client->>Nginx: Request 4 (GET /)
+        Note over Nginx: Backend A temporarily marked down (fail_timeout)
+        Nginx->>BackendB: Forward to healthy Backend B
+        BackendB-->>Nginx: 200 OK (X-Backend: B)
+        Nginx-->>Client: 200 OK (X-Backend: B)
+    end
+
+    rect rgb(240, 255, 240)
+        Note over BackendA: Recovery Event: Backend A Restarted
+        Note over Nginx: fail_timeout expires, probe succeeds
+        Client->>Nginx: Request 5 (GET /)
+        Nginx->>BackendA: Forward to restored Backend A
+        BackendA-->>Nginx: 200 OK (X-Backend: A)
+        Nginx-->>Client: 200 OK (X-Backend: A)
+    end

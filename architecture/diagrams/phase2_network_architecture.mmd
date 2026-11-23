@@ -1,0 +1,42 @@
+graph TB
+    subgraph LAN["Wi-Fi Local Area Network (10.7.0.0/20)"]
+        subgraph Mac1["Mac 1 — Sankalp's MacBook (10.7.1.19)"]
+            DNS1["Primary DNS (dnsmasq :53)<br/>TTL: 30s | Upstream: 8.8.8.8"]
+            StandbyEdge["Standby nginx Edge (:80, :443)<br/>nginx 1.31.9 | TLS Terminator<br/>Failover Pool: 10.7.11.60:3001/3002"]
+        end
+
+        subgraph Mac2["Mac 2 — Tejas's MacBook (10.7.11.60)"]
+            DNS2["Backup DNS (dnsmasq :53)<br/>TTL: 30s | Secondary Resolver"]
+            PrimaryEdge["Primary nginx Edge (:80, :443)<br/>nginx 1.31.6 | TLS Terminator"]
+            
+            subgraph PF["macOS Packet Filter (PF) Firewall"]
+                PFRules["PF Anchor: team1<br/>• pass in from 10.7.1.19 to 3001, 3002<br/>• block drop from any to 3001, 3002"]
+            end
+
+            subgraph Backends["Application Services Tier"]
+                BackendA["Backend A (Node.js/Express)<br/>Port 3001 (TCP)<br/>Header: X-Backend: A"]
+                BackendB["Backend B (Node.js/Express)<br/>Port 3002 (TCP)<br/>Header: X-Backend: B"]
+            end
+        end
+
+        Client["LAN Client / Testing Workstation"]
+    end
+
+    %% DNS Flows
+    Client -- "1. DNS Query (scutil primary)" --> DNS1
+    DNS1 -. "Failover if Primary Down" .-> DNS2
+    Client -. "Fallback Resolution" .-> DNS2
+
+    %% Normal Ingress Edge Flow
+    Client -- "2a. Normal State HTTPS (443)" --> PrimaryEdge
+    PrimaryEdge -- "Loopback IPC" --> BackendA
+    PrimaryEdge -- "Loopback IPC" --> BackendB
+
+    %% Standby Migrated Edge Flow
+    Client -- "2b. Migrated State HTTPS (443)" --> StandbyEdge
+    StandbyEdge -- "Authorized Cross-LAN (Permitted by PF)" --> PFRules
+    PFRules --> BackendA
+    PFRules --> BackendB
+
+    %% Direct Access Blocking
+    Client x-- "Direct LAN Access Blocked (RST/Drop)" --> PFRules

@@ -1,0 +1,39 @@
+graph TB
+    subgraph LAN["Wi-Fi Local Area Network (10.7.0.0/20)"]
+        subgraph Mac1["Mac 1 — Sankalp's MacBook (10.7.1.19 / DNS Authority)"]
+            DNS1["dnsmasq Primary DNS<br/>Port 53 (UDP/TCP)<br/>Interface: en0"]
+            DNSCache["DNS LRU Cache<br/>(size: 1000)"]
+            DNS1 --- DNSCache
+        end
+
+        subgraph Mac2["Mac 2 — Tejas's MacBook (10.7.11.60 / Edge Gateway & Application Tier)"]
+            subgraph EdgeTier["Edge Ingress & Reverse Proxy"]
+                HTTP_80["nginx HTTP Listener<br/>Port 80 (TCP)<br/>301 Permanent Redirect"]
+                HTTPS_443["nginx HTTPS Edge Proxy & TLS Terminator<br/>Port 443 (TCP - TLSv1.2/1.3)<br/>Cert: team1.crt (CN=app.team1.test)"]
+            end
+
+            subgraph UpstreamTier["Upstream Microservices (127.0.0.1 Loopback)"]
+                RR_LB["Round-Robin Balancer Pool<br/>team1_backends"]
+                BackendA["Backend A (Node.js/Express)<br/>Port 3001 (TCP)<br/>Header: X-Backend: A"]
+                BackendB["Backend B (Node.js/Express)<br/>Port 3002 (TCP)<br/>Header: X-Backend: B"]
+            end
+        end
+
+        Client["Client / Evaluation Workstation"]
+    end
+
+    subgraph WAN["Public Internet"]
+        GoogleDNS["Google Public DNS<br/>8.8.8.8:53"]
+    end
+
+    Client -- "1. Query *.team1.test (UDP:53)" --> DNS1
+    DNS1 -- "2. Authoritative Answer: 10.7.11.60" --> Client
+    DNS1 -. "Recursive Resolution (Internet)" .-> GoogleDNS
+
+    Client -- "3. Insecure HTTP (TCP:80)" --> HTTP_80
+    HTTP_80 -- "4. 301 Redirect -> https://..." --> Client
+
+    Client -- "5. Secure HTTPS (TCP:443 + TLS)" --> HTTPS_443
+    HTTPS_443 --> RR_LB
+    RR_LB -- "Req 1, 3, 5... (Localhost IPC)" --> BackendA
+    RR_LB -- "Req 2, 4, 6... (Localhost IPC)" --> BackendB

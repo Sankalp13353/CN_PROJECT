@@ -1,311 +1,299 @@
 # Multi-Tier Private Network Service Platform
-### Computer Networks Laboratory Project — Team 1 (Phase 1)
 
-[![Network Protocol](https://img.shields.io/badge/Protocols-DNS%20%7C%20TCP%20%7C%20TLS%20%7C%20HTTP-blue.svg)](#)
-[![Proxy & Balancer](https://img.shields.io/badge/Edge-Nginx%201.31-green.svg)](#)
-[![DNS](https://img.shields.io/badge/DNS-dnsmasq-orange.svg)](#)
-[![Backends](https://img.shields.io/badge/Backends-Node.js%20%2F%20Express-lightgrey.svg)](#)
-
----
-
-## 📌 Table of Contents
-1. [Project Overview](#-project-overview)
-2. [Team Members & Workstation Roles](#-team-members--workstation-roles)
-3. [System Architecture & Network Topology](#-system-architecture--network-topology)
-4. [Key Features & Implemented Networking Concepts](#-key-features--implemented-networking-concepts)
-5. [Repository Structure](#-repository-structure)
-6. [Step-by-Step Setup & Deployment Guide](#-step-by-step-setup--deployment-guide)
-   - [Prerequisites](#prerequisites)
-   - [Machine 1 (DNS Server) Setup](#machine-1-mac-1-dns-server-setup)
-   - [Machine 2 (Edge Gateway & Backends) Setup](#machine-2-mac-2-edge-gateway--backends-setup)
-7. [Verification & Testing Guide](#-verification--testing-guide)
-8. [Empirical Verification Artifacts](#-empirical-verification-artifacts)
-9. [Detailed Technical Specifications](#-detailed-technical-specifications)
+**Computer Networks Laboratory Engineering Project — Team 1**  
+**Repository:** [https://github.com/Sankalp13353/CN_PROJECT](https://github.com/Sankalp13353/CN_PROJECT)  
+**Academic Session:** 2026 – 2027  
+**Status:** Phase 1 (Core Platform) & Phase 2 (Resilience & Security Extensions) Completed  
 
 ---
 
-## 📖 Project Overview
+## 📑 Formal Reports & Submission Documents
 
-The **Multi-Tier Private Network Service Platform** is a distributed computer networking system designed and deployed across multiple physical workstations on an isolated local area network (LAN). 
+Comprehensive technical documentation and empirical indices are published in the `reports/` directory:
 
-The platform demonstrates how enterprise networking infrastructure works in practice by connecting:
-- A **Dedicated Private DNS Resolver** (`dnsmasq`) for custom top-level domain service discovery (`*.team1.test`).
-- An **Edge Reverse Proxy and Load Balancer** (`nginx`) providing TLS termination and traffic distribution.
-- **Redundant Application Microservices** (Express.js) operating behind the edge proxy with health check APIs and identification headers.
-- **Client-Side and Edge Caching** enforcing deterministic HTTP cache policies (`Cache-Control: public, max-age=60`).
-- **Complete Transport Layer Security** enforcing HTTPS via strict HTTP 301 redirection.
-
----
-
-## 👥 Team Members & Workstation Roles
-
-| Member | Machine ID | Physical IP Address | Hardware MAC Address | Assigned Roles & Daemons |
-| :--- | :--- | :--- | :--- | :--- |
-| **Sankalp** | **Mac 1** | `10.7.0.221` | `10:9f:41:b6:11:88` | • Private DNS Server (`dnsmasq` on port `53`)<br>• Local domain authority for `*.team1.test`<br>• Upstream recursive forwarding to `8.8.8.8` |
-| **Tejas Tyagi** | **Mac 2** | `10.7.14.9` | `10:9f:41:b3:be:81` | • Edge Reverse Proxy (`nginx` on ports `80` & `443`)<br>• TLS Terminator (TLSv1.2 / TLSv1.3)<br>• Round-Robin Load Balancer<br>• Backend A (`node` on port `3001`)<br>• Backend B (`node` on port `3002`) |
+| Document | Format | Description |
+| :--- | :---: | :--- |
+| **[Final Project Report (PDF)](reports/CN_Project_Final_Report.pdf)** | `PDF` | 22-page consolidated academic report with figures, packet traces, and failure analysis. |
+| **[Final Project Report (Markdown)](reports/CN_Project_Final_Report.md)** | `Markdown` | Source report text detailing Phase 1 and Phase 2 architectures. |
+| **[Comprehensive Evidence Index](reports/EVIDENCE_INDEX.md)** | `Markdown` | Traceability matrix linking all captured traces to report chapters. |
+| **[Phase 1 Evidence Folder](evidence/)** | `Directory` | Packet captures (DNS, TCP, TLS, HTTP, Load Balancing, Caching). |
+| **[Phase 2 Evidence Folder](evidence_phase2/)** | `Directory` | Empirical verification screenshots for Extensions A through F. |
 
 ---
 
-## 🌐 System Architecture & Network Topology
+## 📖 Executive Summary
 
-### High-Level Architecture Flow
+The **Multi-Tier Private Network Service Platform** is a distributed computer networking system designed, deployed, and empirically evaluated across two bare-metal macOS workstations communicating over an IEEE 802.11 Wi-Fi LAN (`10.7.0.0/20`).
+
+The platform demonstrates how enterprise-grade infrastructure operates under real network constraints:
+- **Service Discovery:** Custom domain authority for `app.team1.test` and `api.team1.test` via `dnsmasq`.
+- **Edge Ingress & Cryptography:** Strict HTTP-to-HTTPS (301) redirection and TLS termination via `nginx 1.31`.
+- **Stateless Load Balancing:** Horizontal round-robin request distribution across Express.js backends.
+- **Dual-Tier DNS Redundancy:** Automatic client resolver failover between primary (`10.7.1.19`) and backup (`10.7.11.60`) servers.
+- **Zero-Trust Host Hardening:** macOS Packet Filter (PF) boundary rules shielding backend ports from unauthorized LAN probes.
+- **High Availability & Failover:** Passive upstream health tracking (`max_fails`, `fail_timeout`, `proxy_next_upstream`).
+- **Controlled Edge Migration:** Zero-downtime ingress cutover from Mac 2 to Mac 1 over a 30-second TTL drain window.
+
+---
+
+## 👥 Workstation Roles & Hardware Inventory
+
+The implementation strictly utilizes exactly two physical computing machines:
+
+| Workstation | Host Identifier | Assigned Roles & Daemons | Interface | Active IP | MAC Address |
+| :--- | :--- | :--- | :---: | :---: | :--- |
+| **Mac 1** | Sankalp's MacBook Pro | • Primary DNS Server (`dnsmasq` on port `53`)<br>• Standby Edge Proxy (`nginx 1.31.9` on `80`/`443`)<br>• Evaluation Client Resolver Stack | `en0` | `10.7.1.19` | `9e:fd:fb:74:7f:fc` |
+| **Mac 2** | Tejas's MacBook Pro | • Primary Edge Gateway (`nginx 1.31.6` on `80`/`443`)<br>• Backup DNS Server (`dnsmasq` on port `53`)<br>• Packet Filter (PF) Firewall (`anchor: team1`)<br>• Backend A (`node` on port `3001`)<br>• Backend B (`node` on port `3002`) | `en0` | `10.7.11.60` | `3e:cd:97:48:d9:f4` |
+
+---
+
+## 🏛️ System Architecture
+
+### Phase 1: Baseline Architecture
+
+In Phase 1, Mac 1 served as the private DNS authority, resolving custom virtual domains to Mac 2, where an Nginx reverse proxy terminated TLS and balanced traffic between two local Express microservices over loopback.
 
 ```
 +-----------------------------------------------------------------------------------------+
 |                                    WI-FI LAN (10.7.0.0/20)                              |
 +-----------------------------------------------------------------------------------------+
        |                                                                           |
-       v (1. DNS Query: app.team1.test)                                            v (3. Encrypted HTTPS:443)
+       v (1. DNS Query: app.team1.test -> 10.7.11.60)                              v (3. HTTPS:443)
 +-------------------------------+                         +-----------------------------------------------+
-|             MAC 1             |                         |                     MAC 2                     |
-|          10.7.0.221           |                         |                   10.7.14.9                   |
+|     MAC 1 (SANKALP'S MAC)     |                         |              MAC 2 (TEJAS'S MAC)              |
+|          10.7.1.19            |                         |                  10.7.11.60                   |
 | ----------------------------- |                         | --------------------------------------------- |
-|       dnsmasq (Port 53)       |                         |              Nginx Reverse Proxy              |
-|   Resolves *.team1.test to    |                         |          Port 80 (HTTP 301 Redirect)          |
-|      Mac 2 (10.7.14.9)        |                         |         Port 443 (TLS Termination & LB)       |
-|                               |                         | --------------------------------------------- |
-| Upstream: 8.8.8.8 (Google DNS)|                         |                Localhost IPC                  |
-| Cache: 1000 entries           |                         |                127.0.0.1 Loopback             |
-+-------------------------------+                         |             /                     \           |
-       |                                                  |   Backend A (Express)     Backend B (Express) |
-       +-- (2. Returns 10.7.14.9 to Client)               |     Port 3001 (TCP)         Port 3002 (TCP)   |
-                                                          |     [X-Backend: A]          [X-Backend: B]    |
-                                                          +-----------------------------------------------+
+| • dnsmasq Primary DNS (:53)   |                         | • Nginx Ingress Reverse Proxy (:80, :443)     |
+| • Upstream: 8.8.8.8 (Google)  |                         | • TLS Termination (TLSv1.2 / TLSv1.3)         |
+| • LRU Cache: 1000 entries     |                         | • Localhost Loopback Balancer (127.0.0.1)     |
++-------------------------------+                         |   ├── Backend A (Node.js/Express on :3001)    |
+       |                                                  |   └── Backend B (Node.js/Express on :3002)    |
+       +-- (2. Authoritative DNS Reply)                   +-----------------------------------------------+
 ```
 
-### Protocol Layer Stack
-- **Layer 7 (Application)**: HTTP/1.1, DNS (RFC 1035), JSON payloads.
-- **Layer 6 (Presentation)**: TLSv1.2, TLSv1.3 cryptographic termination at Nginx.
-- **Layer 5 (Session)**: Keep-alive socket persistence (`keepalive_timeout 65`).
-- **Layer 4 (Transport)**: UDP (Port 53 for DNS), TCP (Ports 80, 443, 3001, 3002).
-- **Layer 3 (Network)**: IPv4 subnet `10.7.0.0/20`, external routing to `8.8.8.8`.
-- **Layer 2 (Data Link)**: Ethernet II framing, hardware MAC addresses, ARP resolution.
-- **Layer 1 (Physical)**: IEEE 802.11 Wi-Fi radio medium (`en0`).
+### Phase 2: Resilient Hardened Architecture
+
+Phase 2 eliminated single points of failure through secondary DNS authority, Packet Filter socket shielding, passive health checking, and standby edge migration readiness.
+
+```
++-----------------------------------------------------------------------------------------+
+|                              PHASE 2 RESILIENT ARCHITECTURE                             |
++-----------------------------------------------------------------------------------------+
+       |                                                                           |
+       v                                                                           v
++---------------------------------------+         +-----------------------------------------------+
+|         MAC 1 — SANKALP'S MAC         |         |              MAC 2 — TEJAS'S MAC              |
+| ------------------------------------- |         | --------------------------------------------- |
+| • Primary DNS Server (dnsmasq :53)    |         | • Primary Edge Reverse Proxy (nginx :443)     |
+| • Standby nginx Edge Proxy (:80, :443)|         | • Backup DNS Server (dnsmasq :53)             |
+| • Deterministic 30s TTL Caching       |         | • macOS Packet Filter (PF) Anchor: team1      |
+| • Controlled Edge Migration Ingress   |         | • Upstream Backend A (3001) & Backend B (3002)|
++---------------------------------------+         +-----------------------------------------------+
+```
 
 ---
 
-## ✨ Key Features & Implemented Networking Concepts
+## 🚀 Key Implemented Features
 
-### 1. Isolated Private Service Discovery
-- Custom local domains `app.team1.test` and `api.team1.test` are authoritatively resolved by `dnsmasq` to Mac 2 without reliance on external public DNS or `/etc/hosts`.
-- Configured with `cache-size=1000` to buffer query records.
-- Recursive fallback to `8.8.8.8` ensures standard internet browsing remains fully functional.
+### Phase 1 Core Capabilities
+1. **Isolated Service Discovery:** Private DNS mapping for `app.team1.test` and `api.team1.test` without external authority dependencies.
+2. **Edge Ingress & TLS Termination:** Offloads cryptographic negotiation from application services using RSA-2048 certificates with support for TLSv1.2 and TLSv1.3.
+3. **HTTP 301 Insecure Redirection:** Enforces HTTPS by automatically upgrading cleartext port 80 connections.
+4. **Stateless Round-Robin Load Balancing:** Alternates requests evenly between Backend A (`:3001`) and Backend B (`:3002`).
+5. **Client Tracking & Caching:** Injects `Host`, `X-Real-IP`, `X-Forwarded-For`, and `Cache-Control: public, max-age=60`.
 
-### 2. Edge Reverse Proxy & TLS Termination
-- Terminates all SSL/TLS encryption at Nginx on Mac 2, offloading cryptographic overhead from application services.
-- Supports both **TLSv1.2** and **TLSv1.3** using custom X.509 certificates (`team1.crt` / `team1.key`).
-- HTTP port `80` automatically redirects all requests to HTTPS via an HTTP `301 Moved Permanently` response.
-
-### 3. Horizontal Round-Robin Load Balancing
-- Distributes incoming HTTPS requests alternately across two local Express.js backend services:
-  - **Backend A** listening on `127.0.0.1:3001`
-  - **Backend B** listening on `127.0.0.1:3002`
-- Guarantees even load distribution with zero session stickiness:
-  $$\text{Target} = \text{backends}[\text{request\_counter} \pmod 2]$$
-
-### 4. Client & Edge HTTP Caching
-- Responses from the edge proxy include standard cache directives:
-  ```http
-  Cache-Control: public, max-age=60
-  ```
-- Backends provide entity tags (`ETag`) enabling HTTP `304 Not Modified` validation.
-
-### 5. Transparent Client Context Forwarding
-- Nginx injects header metadata before dispatching requests upstream:
-  - `Host`: Original requested virtual host.
-  - `X-Real-IP`: Client's physical IP address.
-  - `X-Forwarded-For`: Chain of client/proxy IP addresses.
-  - `X-Forwarded-Proto`: Ingress scheme (`https`).
+### Phase 2 Extensions (A through F)
+- **Extension A (Backup DNS Resolver):** Synchronized secondary DNS resolver on Mac 2 with automatic client fallback when primary halts.
+- **Extension B (DNS TTL & Controlled Caching):** Authoritative 30-second TTL enforcement supporting deterministic cache lifecycles.
+- **Extension C (Service Isolation with PF Firewall):** Stateful kernel packet filtering dropping unauthorized LAN traffic to backend ports while whitelisting authorized edge proxies.
+- **Extension D (Backend High Availability):** Upstream passive health checks (`max_fails=3`, `fail_timeout=10s`, `proxy_next_upstream`) preventing 502 Bad Gateway errors.
+- **Extension E (Controlled Edge Migration):** Standby edge proxy on Mac 1 enabling scheduled cutovers with zero dropped requests.
+- **Extension F (Disaster Recovery & Syntax Auditing):** Non-disruptive configuration validation (`nginx -t`, `dnsmasq --test`) and verified rollback procedures.
 
 ---
 
-## 📂 Repository Structure
+## 📂 Repository Directory Structure
 
 ```
 CN_PROJECT/
-├── README.md                      # Project overview, setup, and execution manual
-├── package.json                   # Project dependencies (Express.js)
-├── package-lock.json              # Dependency lockfile
-├── backend-a.js                   # Node.js backend instance A (Port 3001)
-├── backend-b.js                   # Node.js backend instance B (Port 3002)
+├── README.md                                  # Primary repository landing page
+├── package.json                               # Application dependencies (Express)
+├── package-lock.json                          # Dependency lockfile
+├── backend-a.js                               # Backend instance A (Port 3001)
+├── backend-b.js                               # Backend instance B (Port 3002)
 │
-├── architecture/                  # Architectural and topological documentation
-│   ├── architecture.md            # Comprehensive system & protocol specification
-│   ├── topology.md                # Network topology, socket matrix, and traffic flows
-│   └── atricture.md               # Symbolic link to architecture.md
+├── reports/                                   # Formal academic documentation
+│   ├── CN_Project_Final_Report.pdf            # 22-page consolidated submission report
+│   ├── CN_Project_Final_Report.md             # Source markdown report
+│   └── EVIDENCE_INDEX.md                      # Comprehensive empirical verification index
 │
-├── configuration/                 # System and daemon configuration files
-│   ├── dnsmasq.conf               # Private DNS resolver configuration for Mac 1
-│   ├── nginx.conf                 # Edge reverse proxy, TLS, & upstream load balancer config
-│   ├── backend-launch.txt         # Launch commands reference for backend daemons
-│   └── tls-setup.txt              # OpenSSL certificate generation reference
+├── architecture/                              # Network specifications & topologies
+│   ├── phase1_architecture.md                 # Baseline Phase 1 architecture details
+│   ├── phase2_architecture.md                 # Hardened Phase 2 architecture details
+│   ├── network_topology.md                    # Comprehensive socket & port matrix
+│   └── diagrams/                              # Standalone Mermaid architecture diagrams
+│       ├── phase1_network_architecture.mmd
+│       ├── phase2_network_architecture.mmd
+│       ├── dns_failover_flow.mmd
+│       ├── backend_failover_flow.mmd
+│       └── edge_migration_flow.mmd
 │
-└── evidence/                      # Wireshark packet captures and terminal verification
-    ├── dns/
-    │   └── DNS EVI.png            # Wireshark trace of DNS query/response over UDP 53
-    ├── tcp/
-    │   └── TCP.png                # Wireshark trace of TCP 3-way handshake on port 443
-    ├── tls/
-    │   └── TLS.png                # Wireshark trace of TLSv1.2 Application Data records
-    ├── http/
-    │   └── HTTP EVI.png           # Wireshark trace of direct HTTP request/response
-    ├── load-balancing/
-    │   └── Load Balancing.png     # Terminal proof of alternating round-robin backends
-    └── caching/
-        └── Caching.png            # Header validation showing Cache-Control directives
+├── configuration/                             # Verified system configurations
+│   ├── dnsmasq.conf                           # Authoritative private DNS config
+│   ├── nginx.conf                             # Mac 2 primary edge proxy config
+│   ├── nginx-standby.conf                     # Mac 1 standby edge proxy config
+│   ├── backend-launch.txt                     # Backend execution reference
+│   └── tls-setup.txt                          # OpenSSL certificate reference
+│
+├── evidence/                                  # Phase 1 Wireshark & terminal traces
+│   ├── dns/                                   # DNS query/response traces over UDP 53
+│   ├── tcp/                                   # TCP 3-way handshake on port 443
+│   ├── tls/                                   # TLSv1.2 Application Data records
+│   ├── http/                                  # Direct HTTP request/response traces
+│   ├── load-balancing/                        # Round-robin header alternation logs
+│   └── caching/                               # Cache-Control & ETag verification
+│
+└── evidence_phase2/                           # Phase 2 extension verification artifacts
+    ├── A_Backup_DNS/                          # Multi-resolver failover proof
+    ├── B_DNS_TTL_Caching/                     # 30-second TTL countdown validation
+    ├── C_Service_Isolation/                   # macOS Packet Filter anchor rules & drop logs
+    ├── D_Backend_High_Availability/           # 10-request sequential curl load balance loop
+    ├── E_Edge_Migration/                      # Migrated edge DNS & HTTPS responses
+    └── F_Troubleshooting/                     # Non-disruptive syntax audits & recovery
 ```
 
 ---
 
-## 🚀 Step-by-Step Setup & Deployment Guide
+## 🛠️ Reproduction & Deployment Guide
 
 ### Prerequisites
-- **macOS** with Homebrew installed.
-- **Node.js** (v18+ or v20+).
-- **Nginx** (`brew install nginx`).
-- **dnsmasq** (`brew install dnsmasq`).
-- **Wireshark** (for packet capture and protocol verification).
+- Two physical workstations running macOS (Sonoma / Sequoia).
+- Homebrew package manager.
+- Node.js (v18+ or v20+) installed.
+- `dnsmasq` (`brew install dnsmasq`).
+- `nginx` (`brew install nginx`).
 
----
+<details>
+<summary><strong>Step 1: Application Backend Services Deployment (Mac 2)</strong></summary>
 
-### Machine 1 (Mac 1: DNS Server) Setup
+Install Express dependencies and launch both microservices in persistent terminal sessions:
 
-1. Install `dnsmasq`:
-   ```bash
-   brew install dnsmasq
-   ```
-2. Start `dnsmasq` using the project configuration file:
-   ```bash
-   sudo dnsmasq -C /path/to/CN_PROJECT/configuration/dnsmasq.conf -d
-   ```
-   *Note: Runs in foreground with `log-queries` active for real-time inspection.*
-
----
-
-### Machine 2 (Mac 2: Edge Gateway & Backends) Setup
-
-#### 1. Install Node Dependencies
 ```bash
-cd /Users/tejastyagi/Desktop/CN_PROJECT
+cd /path/to/CN_PROJECT
 npm install
+
+# Launch Backend A (Port 3001)
+node backend-a.js
+
+# Launch Backend B (Port 3002) in a separate terminal
+node backend-b.js
 ```
+</details>
 
-#### 2. Launch Backend Microservices
-Open two background or persistent terminal sessions:
+<details>
+<summary><strong>Step 2: Private DNS Subsystem Setup (Mac 1 & Mac 2)</strong></summary>
 
-- **Launch Backend A (Port 3001)**:
-  ```bash
-  node backend-a.js
-  ```
-- **Launch Backend B (Port 3002)**:
-  ```bash
-  node backend-b.js
-  ```
+Deploy the authoritative DNS configuration:
 
-#### 3. Setup TLS Certificates
-Ensure the TLS certificate and private key are in place:
 ```bash
-sudo mkdir -p /opt/homebrew/etc/nginx/certs
-sudo cp /Users/tejastyagi/Desktop/team1.crt /opt/homebrew/etc/nginx/certs/team1.crt
-# Or generate a new self-signed certificate if needed:
-sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-  -keyout /opt/homebrew/etc/nginx/certs/team1.key \
-  -out /opt/homebrew/etc/nginx/certs/team1.crt \
-  -subj "/CN=*.team1.test"
-```
+# Verify active IP
+ifconfig en0 | grep inet
 
-#### 4. Launch Nginx Edge Proxy
+# Validate configuration syntax
+sudo /opt/homebrew/sbin/dnsmasq --test
+
+# Start dnsmasq daemon
+sudo brew services start dnsmasq
+
+# Test resolution
+dig @10.7.1.19 app.team1.test +short
+# Expected output: 10.7.11.60
+```
+</details>
+
+<details>
+<summary><strong>Step 3: Primary Nginx Edge Gateway Deployment (Mac 2)</strong></summary>
+
+Deploy the edge reverse proxy:
+
 ```bash
 # Test configuration syntax
-sudo nginx -t -c /Users/tejastyagi/Desktop/CN_PROJECT/configuration/nginx.conf
+sudo nginx -t -c /path/to/CN_PROJECT/configuration/nginx.conf
 
-# Start or reload Nginx
-sudo nginx -c /Users/tejastyagi/Desktop/CN_PROJECT/configuration/nginx.conf
-# If already running:
-sudo nginx -s reload
+# Start Nginx
+sudo nginx -c /path/to/CN_PROJECT/configuration/nginx.conf
+```
+</details>
+
+<details>
+<summary><strong>Step 4: Packet Filter (PF) Firewall Activation (Mac 2)</strong></summary>
+
+Enforce zero-trust socket shielding on Mac 2:
+
+```bash
+# Inject temporary anchor rules (non-destructive)
+echo "pass in quick on en0 inet proto tcp from 10.7.1.19 to any port = 3001 flags S/SA keep state
+pass in quick on en0 inet proto tcp from 10.7.1.19 to any port = 3002 flags S/SA keep state
+block drop in quick on en0 proto tcp from any to any port = 3001
+block drop in quick on en0 proto tcp from any to any port = 3002" | sudo pfctl -a team1 -f -
+
+# Verify active rules
+sudo pfctl -a team1 -sr
+```
+</details>
+
+---
+
+## 🧪 Verification & Demonstration Procedures
+
+### 1. Test Ingress Redirection (Port 80 -> 443)
+```bash
+curl -I http://app.team1.test/
+```
+*Expected Output:* `HTTP/1.1 301 Moved Permanently`, `Location: https://app.team1.test/`.
+
+### 2. Test Round-Robin Load Balancing
+```bash
+for i in {1..6}; do curl -sk https://app.team1.test/ -D - -o /dev/null | grep "X-Backend"; done
+```
+*Expected Output:* Strict alternation: `X-Backend: A`, `X-Backend: B`, `A`, `B`, `A`, `B`.
+
+### 3. Test DNS Resolver Failover
+```bash
+# Stop Primary DNS on Mac 1
+sudo brew services stop dnsmasq
+
+# Query Backup DNS on Mac 2
+dig @10.7.11.60 app.team1.test +noall +answer
+# Result: Resolves immediately with TTL 30s
+
+# Restore Primary DNS
+sudo brew services start dnsmasq
+```
+
+### 4. Test Service Isolation via Packet Filter
+```bash
+# Probe from unauthorized node (drops connection)
+nc -z -v -w 2 10.7.11.60 3001
+# Result: Connection timed out (Blocked by PF)
+
+# Probe from authorized edge (Mac 1)
+curl -i http://10.7.11.60:3001/api/status
+# Result: HTTP/1.1 200 OK (Permitted by PF anchor)
 ```
 
 ---
 
-## 🧪 Verification & Testing Guide
+## 🔍 Technical Limitations & Future Improvements
 
-Run the following test commands from any machine on the network configured to use Mac 1 (`10.7.0.221`) as its DNS resolver:
-
-### 1. Test Private DNS Resolution
-```bash
-dig @10.7.0.221 app.team1.test +short
-# Expected output: 10.7.14.9
-
-dig @10.7.0.221 api.team1.test +short
-# Expected output: 10.7.14.9
-```
-
-### 2. Test Insecure HTTP Redirection (Port 80 -> 443)
-```bash
-curl -I http://app.team1.test
-```
-**Expected Output:**
-```http
-HTTP/1.1 301 Moved Permanently
-Server: nginx/1.31.6
-Location: https://app.team1.test/
-```
-
-### 3. Test Secure HTTPS & TLS Termination (Port 443)
-```bash
-curl -k -i https://app.team1.test/
-```
-**Expected Output:**
-```http
-HTTP/1.1 200 OK
-Server: nginx/1.31.6
-Content-Type: application/json; charset=utf-8
-X-Backend: A
-Cache-Control: public, max-age=60
-
-{"backend":"A","message":"Hello from Backend A"}
-```
-
-### 4. Test Round-Robin Load Balancing
-Send multiple sequential requests to verify round-robin alternation between Backend A and Backend B:
-```bash
-for i in {1..6}; do curl -s -k -D - https://app.team1.test/ -o /dev/null | grep "X-Backend"; done
-```
-**Observed Output:**
-```text
-X-Backend: A
-X-Backend: B
-X-Backend: A
-X-Backend: B
-X-Backend: A
-X-Backend: B
-```
-
-### 5. Test Backend Health Check Endpoints
-```bash
-curl -k -s https://app.team1.test/api/status
-# Returns: {"backend":"A","status":"running"} or {"backend":"B","status":"running"}
-```
+1. **Host-Level High Availability:** Backend A and Backend B run as separate Node.js processes on the same physical workstation (Mac 2). While this demonstrates process-level load balancing and upstream failure recovery, it does not provide true hardware-level fault tolerance if Mac 2 loses power.
+2. **Cryptographic Trust:** The TLS certificate is locally generated and self-signed. Client tools must use `-k` (`--insecure`) or import the certificate into the macOS Keychain trust store to avoid browser trust warnings.
+3. **Cross-LAN Transport:** In Phase 2 Extension E, edge-to-backend proxy traffic across the Wi-Fi LAN travels as unencrypted HTTP over ports 3001/3002. Future iterations should implement internal mutual TLS (mTLS) or WireGuard tunneling.
 
 ---
 
-## 📸 Empirical Verification Artifacts
+## 📜 Academic Integrity & License
 
-All verification artifacts are stored in the [`evidence/`](evidence/) directory:
+This project was developed exclusively by **Team 1** for academic evaluation in the Computer Networks course. All captured traces, terminal outputs, and architectural designs represent original work conducted on physical hardware.
 
-| Protocol / Layer | Verified Behavior | Evidence Image |
-| :--- | :--- | :--- |
-| **DNS (UDP:53)** | `app.team1.test` resolved to `10.7.14.9` via Mac 1 (`10.7.0.221`) | [![DNS Evidence](evidence/dns/DNS%20EVI.png)](evidence/dns/DNS%20EVI.png) |
-| **TCP (TCP:443)** | Full TCP 3-way handshake and connection teardown on port 443 | [![TCP Evidence](evidence/tcp/TCP.png)](evidence/tcp/TCP.png) |
-| **TLS (Security)** | Application Data encryption via TLSv1.2 (Content Type 23) | [![TLS Evidence](evidence/tls/TLS.png)](evidence/tls/TLS.png) |
-| **HTTP (Direct)** | Raw HTTP request and JSON response from Backend A on port 3001 | [![HTTP Evidence](evidence/http/HTTP%20EVI.png)](evidence/http/HTTP%20EVI.png) |
-| **Load Balancing**| Strict alternation between Backend A and Backend B across requests | [![Load Balancing Evidence](evidence/load-balancing/Load%20Balancing.png)](evidence/load-balancing/Load%20Balancing.png) |
-| **HTTP Caching** | Response headers confirming `Cache-Control: public, max-age=60` and `ETag` | [![Caching Evidence](evidence/caching/Caching.png)](evidence/caching/Caching.png) |
-
----
-
-## 📚 Detailed Technical Specifications
-
-For comprehensive, in-depth architectural and topological documentation, refer to:
-- 📄 **[System Architecture Specification](architecture/architecture.md)**: Deep dive into the multi-tier design, layer mapping, cryptographic lifecycle, and fault tolerance.
-- 🗺️ **[Network Topology Specification](architecture/topology.md)**: Physical and logical diagrams, socket and port allocation matrices, subnet calculations, and packet flow trajectories.
+Released under the **MIT License**.
